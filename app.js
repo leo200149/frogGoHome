@@ -3,11 +3,6 @@ let width = (window.innerWidth > 0) ? window.innerWidth : screen.width;
 let height = (window.innerHeight > 0) ? window.innerHeight : screen.height;
 let sizeUp = height / 250;
 const CONFIGS = {
-    ITEM_COLOR: 'white',
-    ENEMY_COLOR: 'green',
-    TARGET_COLOR: 'green',
-    STRONG_ENEMY_COLOR: 'orange',
-    GAME_OVER_COLOR: 'red',
     WIDTH: width,
     HEIGHT: height,
     CENTER: width / 2,
@@ -20,12 +15,13 @@ const CONFIGS = {
     GUN_TOP: 230 * sizeUp,
     GEN_ENEMY_MARGIN_LEFT: 150 * sizeUp,
     GEN_ENEMY_WIDTH: 200 * sizeUp,
-    BULLET_SPEED: 2 * sizeUp,
-    ENEMY_SPEED: 2 * sizeUp,
-    SCORE_POSITION: { x: 10, y: 20 * sizeUp },
+    BULLET_SPEED: 1.5 * sizeUp,
+    ENEMY_SPEED: 1 * sizeUp,
+    SCORE_BOARD_POSITION:{x: 0 , y: 40 * sizeUp ,height:25*sizeUp},
+    SCORE_POSITION: { x: width / 2 , y: 40 * sizeUp },
     WAIT_START_POSITION: { x: width / 2, y: height / 2 },
-    GAME_OVER_POSITION: { x: width / 2, y: height / 2 - 50 * sizeUp },
-    OVER_SCORE_POSITION: { x: width / 2, y: height / 2 - 30 * sizeUp },
+    GAME_OVER_POSITION: { x: width / 2, y: height / 2},
+    OVER_SCORE_POSITION: { x: width / 2, y: height / 2+20*sizeUp },
     TARGET_POSITION: { x: 0, y: 0 },
     ENEMY_POSITION: { x: width / 2, startY: 60 * sizeUp, interval: 45 * sizeUp, count: 3, limit: 70 * sizeUp, randLimit: 50 * sizeUp },
     GEN_ENEMY_SPEED: 150,
@@ -78,26 +74,108 @@ const tools = function () {
     return instance;
 }();
 
-const UIController = function (tools) {
+
+// 直接拿現成的效果來放
+const hitEffect = function () {
+    const balls = [];
+    //创建对象
+    function ball() {
+        this.x = null;
+        this.y = null;
+        this.color = null;
+        this.r = null;
+        this.angle = null;//小球偏移量
+        this.anglex = null;
+        this.angley = null;
+        //初始状态的小球
+        this.int = function (X, Y) {
+            this.x = X;
+            this.y = Y;
+            this.color = this.randomcolor();
+            this.r = this.randomR(5, 10);
+            this.angle = Math.random() * (Math.PI * 2);
+            this.anglex = this.randomR(1, 3) * Math.cos(this.angle);
+            this.angley = this.randomR(1, 3) * Math.sin(this.angle);
+        }
+        //随机颜色
+        this.randomcolor = function () {
+            return "#acdffce3";
+        }
+        //随机数字 可控制半径或xy移动量
+        this.randomR = function (min, max) {
+            return Math.random() * max + min;
+        }
+        //小球的运动及偏移量
+        this.move = function () {
+            this.x += this.anglex;
+            this.y += this.angley;
+            this.r -= 0.1;
+            this.anglex *= 0.97;
+            this.angley *= 0.97;
+        }
+
+    }
+    //创建小球
+    function createball(X, Y) {
+        var count = parseInt(Math.random() * 30 + 20);
+        for (var i = 0; i < count; i++) {
+            var Ball = new ball();
+            Ball.int(X, Y);
+            balls.push(Ball);
+        }
+    }
+    //在canvas上绘制小球
+    function draw(ctx) {
+        for (var i = 0; i < balls.length; i++) {
+            var b = balls[i];
+            b.move();
+            ctx.beginPath();
+            ctx.arc(b.x, b.y, b.r, 0, Math.PI * 2, true);
+            ctx.fillStyle = b.color;
+            ctx.fill();
+            ctx.closePath();
+        }
+        remove();
+    }
+    //移除小球
+    function remove() {
+        for (var i = 0; i < balls.length; i++) {
+            var b = balls[i];
+            if (b.r < 0.3) {
+                balls.splice(i, 1);
+                i--;
+            }
+        }
+    }
+    return {
+        createBall: createball,
+        draw: draw,
+    }
+}();
+
+const UIController = function (tools,hitEffect) {
     var model;
     var modelStart = false;
     const canvas = document.getElementById('board');
     const ctx = canvas.getContext('2d');
     const bulletImg = document.getElementById('bullet');
     const targetImg = document.getElementById('target');
+    const gunImg = document.getElementById('gun');
+    const scoreImg = document.getElementById('score_board');
 
     canvas.width = width;
     canvas.height = height;
     const instance = {
         draw: function () {
             instance.cleanCanvas();
-            instance.paintGun();
             if (model != null) {
                 instance.paintWaitStart(model.first());
+                instance.paintGun(model.first());
                 instance.paintTarget(model.target());
                 instance.paintEnemys(model.enemys());
                 instance.paintBullets(model.bullets());
-                instance.paintTimeAndScore(model.time(), model.score());
+                instance.paintEffect();
+                instance.paintScore(model.first(),model.gameOver(), model.score());
                 instance.checkModelState();
             }
         },
@@ -108,41 +186,55 @@ const UIController = function (tools) {
             }
         },
         cleanCanvas: function () {
-            ctx.fillStyle = CONFIGS.ITEM_COLOR;
+            ctx.fillStyle = "green";
             ctx.clearRect(0, 0, canvas.width, canvas.height);
+        },
+        paintEffect:function(){
+            hitEffect.draw(ctx);
         },
         paintWaitStart: function (first) {
             if (!first) {
                 return
             }
-            ctx.font = "42px Arial";
-            ctx.fillStyle = CONFIGS.GAME_OVER_COLOR;
+            ctx.font = "42px monospace";
+            ctx.fillStyle = "white";
             ctx.textBaseline = "middle";
             ctx.textAlign = "center";
+            ctx.drawImage(scoreImg, 0, CONFIGS.SCORE_BOARD_POSITION.y, width, width);
             ctx.fillText("點擊開始", CONFIGS.WAIT_START_POSITION.x, CONFIGS.WAIT_START_POSITION.y);
         },
-        paintTimeAndScore: function (time, score) {
-            ctx.font = "42px Arial";
-            ctx.fillStyle = CONFIGS.ITEM_COLOR;
-            ctx.textBaseline = "middle";
-            ctx.textAlign = "left";
-            ctx.fillText("分數:" + score, CONFIGS.SCORE_POSITION.x, CONFIGS.SCORE_POSITION.y);
-        },
-        paintGameOver() {
-            ctx.font = "42px Arial";
-            ctx.fillStyle = CONFIGS.GAME_OVER_COLOR;
+        paintScore: function (first,over, score) {
+            if (first||over) {
+                return
+            }
+            ctx.font = "84px monospace";
+            ctx.fillStyle = "white";
             ctx.textBaseline = "middle";
             ctx.textAlign = "center";
-            ctx.fillText('遊戲結束' + model.score(), CONFIGS.GAME_OVER_POSITION.x, CONFIGS.GAME_OVER_POSITION.y);
-            ctx.fillText('分數:' + model.score(), CONFIGS.OVER_SCORE_POSITION.x, CONFIGS.OVER_SCORE_POSITION.y);
+            ctx.fillText(score, CONFIGS.SCORE_POSITION.x, CONFIGS.SCORE_POSITION.y);
         },
-        paintGun: function () {
-            ctx.beginPath();
-            ctx.moveTo(CONFIGS.CENTER - CONFIGS.GUN_WIDTH, CONFIGS.BOTTOM);
-            ctx.lineTo(CONFIGS.CENTER, CONFIGS.GUN_TOP);
-            ctx.lineTo(CONFIGS.CENTER + CONFIGS.GUN_WIDTH, CONFIGS.BOTTOM);
-            ctx.fillStyle = CONFIGS.ITEM_COLOR;
-            ctx.fill();
+        paintGameOver() {
+            ctx.font = "64px monospace";
+            ctx.fillStyle = "white";
+            ctx.textBaseline = "middle";
+            ctx.textAlign = "center";
+            ctx.drawImage(scoreImg, 0, CONFIGS.SCORE_BOARD_POSITION.y, width, width);
+            ctx.fillText('成功回家', CONFIGS.GAME_OVER_POSITION.x, CONFIGS.GAME_OVER_POSITION.y);
+            ctx.font = "36px monospace";
+            ctx.fillText("青蛙"+model.score()+"隻", CONFIGS.OVER_SCORE_POSITION.x, CONFIGS.OVER_SCORE_POSITION.y);
+        },
+        paintGun: function (first) {
+            if (first) {
+                return
+            }
+            // ctx.beginPath();
+            // ctx.moveTo(CONFIGS.CENTER - CONFIGS.GUN_WIDTH, CONFIGS.BOTTOM);
+            // ctx.lineTo(CONFIGS.CENTER, CONFIGS.GUN_TOP);
+            // ctx.lineTo(CONFIGS.CENTER + CONFIGS.GUN_WIDTH, CONFIGS.BOTTOM);
+            // ctx.fillStyle = CONFIGS.ITEM_COLOR;
+            // ctx.fill();
+            ctx.drawImage(gunImg, CONFIGS.CENTER - CONFIGS.BULLET_SIZE*4, CONFIGS.GUN_TOP, CONFIGS.BULLET_SIZE * 8, CONFIGS.BULLET_SIZE * 8);
+            ctx.drawImage(bulletImg, CONFIGS.CENTER - CONFIGS.BULLET_SIZE*2, CONFIGS.GUN_TOP, CONFIGS.BULLET_SIZE * 4, CONFIGS.BULLET_SIZE * 4);
         },
         paintBullet: function (x, y) {
             //   let ctx = canvas.getContext('2d');
@@ -150,7 +242,7 @@ const UIController = function (tools) {
             //   ctx.fillRect(x-CONFIGS.BULLET_SIZE, y, CONFIGS.BULLET_SIZE*2 , CONFIGS.BULLET_SIZE*4);
             //   ctx.beginPath();
             let ctx = canvas.getContext('2d');
-            ctx.drawImage(bulletImg, x - CONFIGS.BULLET_SIZE, y, CONFIGS.BULLET_SIZE * 4, CONFIGS.BULLET_SIZE * 4);
+            ctx.drawImage(bulletImg, x - CONFIGS.BULLET_SIZE*2, y, CONFIGS.BULLET_SIZE * 4, CONFIGS.BULLET_SIZE * 4);
         },
         paintBullets: function (bullets) {
             for (let i in bullets) {
@@ -224,9 +316,9 @@ const UIController = function (tools) {
         }
     };
     return instance;
-}(tools);
+}(tools,hitEffect);
 
-var DataController = function (tools) {
+var DataController = function (tools,hitEffect) {
     let score = 0;
     let time = CONFIGS.GAME_TME;
     let target = {};
@@ -234,6 +326,7 @@ var DataController = function (tools) {
     let bullets = [];
     let gameOver = false;
     let first = true;
+    let nextPlayTime = 0;
     const instance = {
         score: function () {
             return score;
@@ -316,6 +409,7 @@ var DataController = function (tools) {
                 let enemy = enemys[i];
                 if (enemy.x <= CONFIGS.BULLET_SIZE && Math.abs(bullet.y - enemy.y) <= CONFIGS.BULLET_SIZE) {
                     gameOver = true;
+                    nextPlayTime = new Date().getTime()+500;
                 }
             }
             return false;
@@ -326,7 +420,8 @@ var DataController = function (tools) {
             //     score++;
             //     return true;
             //   }
-            if (bullet.y <= CONFIGS.TARGET_SIZE / 2) {
+            if (bullet.y <= CONFIGS.TARGET_SIZE *3/5) {
+                hitEffect.createBall(bullet.x+CONFIGS.BULLET_SIZE,bullet.y);
                 score++;
                 return true;
             }
@@ -343,8 +438,12 @@ var DataController = function (tools) {
             bullets = [];
             gameOver = false;
             first = false;
+            nextPlayTime = 0;
         },
         start: function () {
+            if(new Date().getTime()<nextPlayTime){
+                return
+            }
             instance.init();
             instance.genTarget();
             instance.genEnemys();
@@ -356,7 +455,7 @@ var DataController = function (tools) {
 };
 
 function start() {
-    UIController.start(new DataController(tools));
+    UIController.start(new DataController(tools,hitEffect));
 }
 
 start();
